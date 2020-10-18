@@ -28,7 +28,7 @@ public async Task Fetch()
         Method = new HttpMethod("GET"),
         RequestUri = new Uri($"https://dblp.org/search/publ/api?q=author%3A{authorArgument}%3A&format=json&h=1000"),
     };
-    requestMessage.SetBrowserRequestMode(BrowserRequestMode.Cors);
+    requestMessage.SetBrowserRequestMode(BrowserRequestMode.NoCors);
     requestMessage.SetBrowserRequestCredentials(BrowserRequestCredentials.Include);
 
     HttpResponseMessage result = await client.SendAsync(requestMessage);
