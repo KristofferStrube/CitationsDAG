@@ -1,6 +1,7 @@
 ﻿@page "/FetchPapersForAuthor"
 @inject HttpClient client
 @using System.Text.Json
+@using System.Net.Http.Headers
 
 <label for="author">Author:</label>
 <input id="author" @bind-value=@author />
@@ -11,41 +12,43 @@
     <div>@paper</div>
 }
 @code {
-    protected string author { get; set; }
+protected string author { get; set; }
 
-    protected List<string> Papers = new List<string>();
+protected List<string> Papers = new List<string>();
 
-    protected override async Task OnInitializedAsync()
+protected override async Task OnInitializedAsync()
+{
+}
+
+public async Task Fetch()
+{
+    string authorArgument = author.Replace(" ", "+");
+    var requestMessage = new HttpRequestMessage()
     {
-    }
+        Method = new HttpMethod("GET"),
+        RequestUri = new Uri($"https://dblp.org/search/publ/api?q=author%3A{authorArgument}%3A&format=json&h=1000"),
+    };
+    requestMessage.SetBrowserRequestMode(BrowserRequestMode.Cors);
+    requestMessage.SetBrowserRequestCredentials(BrowserRequestCredentials.Include);
 
-    public async Task Fetch()
-    {
-        string authorArgument = author.Replace(" ", "+");
-        var requestMessage = new HttpRequestMessage()
-        {
-            Method = new HttpMethod("GET"),
-            RequestUri = new Uri($"https://dblp.org/search/publ/api?q=author%3A{authorArgument}%3A&format=json&h=1000"),
-        };
-        requestMessage.SetBrowserRequestMode(BrowserRequestMode.Cors);
-        HttpResponseMessage result = await client.SendAsync(requestMessage);
+    HttpResponseMessage result = await client.SendAsync(requestMessage);
 
-        string stringContent = await result.Content.ReadAsStringAsync();
-        var json = JsonDocument.Parse(stringContent);
-        var hits = json.RootElement.GetProperty("result").GetProperty("hits").GetProperty("hit").EnumerateArray();
-        JsonElement thowAwayValue;
+    string stringContent = await result.Content.ReadAsStringAsync();
+    var json = JsonDocument.Parse(stringContent);
+    var hits = json.RootElement.GetProperty("result").GetProperty("hits").GetProperty("hit").EnumerateArray();
+    JsonElement thowAwayValue;
 
-        Papers = hits
-            .GroupBy(hit => hit.GetProperty("info").GetProperty("title").GetString().ToLower(), hit => hit)
-            .Where(hitGroup => hitGroup
-                .Where(hit => hit.GetProperty("info").TryGetProperty("doi", out thowAwayValue)).Count() != 0)
-            .Select(hitGroup => hitGroup
-                .Where(hit => hit.GetProperty("info").TryGetProperty("doi", out thowAwayValue))
-                .First()
-                .GetProperty("info"))
-            .Select(info => info.GetProperty("title").GetString() + " : " + info.GetProperty("doi").GetString())
-            .ToList();
-    }
+    Papers = hits
+        .GroupBy(hit => hit.GetProperty("info").GetProperty("title").GetString().ToLower(), hit => hit)
+        .Where(hitGroup => hitGroup
+            .Where(hit => hit.GetProperty("info").TryGetProperty("doi", out thowAwayValue)).Count() != 0)
+        .Select(hitGroup => hitGroup
+            .Where(hit => hit.GetProperty("info").TryGetProperty("doi", out thowAwayValue))
+            .First()
+            .GetProperty("info"))
+        .Select(info => info.GetProperty("title").GetString() + " : " + info.GetProperty("doi").GetString())
+        .ToList();
+}
 
     private class PublRequest
     {
