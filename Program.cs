@@ -17,7 +17,11 @@ namespace CitationsDAG
             var builder = WebAssemblyHostBuilder.CreateDefault(args);
             builder.RootComponents.Add<App>("#app");
 
-            builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+            HttpClient client = new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
+            client.DefaultRequestHeaders.Add("Access-Control-Allow-Origin", "*");
+            client.DefaultRequestHeaders.Referrer = new Uri(builder.HostEnvironment.BaseAddress);
+
+            builder.Services.AddScoped(sp => client);
 
             await builder.Build().RunAsync();
         }
