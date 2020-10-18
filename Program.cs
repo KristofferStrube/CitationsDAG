@@ -17,10 +17,7 @@ namespace CitationsDAG
             var builder = WebAssemblyHostBuilder.CreateDefault(args);
             builder.RootComponents.Add<App>("#app");
 
-            HttpClient client = new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
-            client.DefaultRequestHeaders.Referrer = new Uri(builder.HostEnvironment.BaseAddress);
-
-            builder.Services.AddScoped(sp => client);
+            builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 
             await builder.Build().RunAsync();
         }
