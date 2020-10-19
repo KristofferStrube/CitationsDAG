@@ -1,49 +1,119 @@
 ﻿@page "/FetchPapersForAuthor"
 @inject HttpClient client
+@inject Blazored.LocalStorage.ILocalStorageService localStore
 @using System.Text.Json
-@using System.Net.Http.Headers
+@using CitationsDAG.Models
 
 <label for="author">Author:</label>
-<input id="author" @bind-value=@author />
+<input id="author" @bind-value=@Author />
 <button @onclick="()=>Fetch()">Fetch!</button>
-
-@foreach (string paper in Papers)
+<br />
+@if (Total != 0)
 {
-<div>@paper</div>
+    <p>@Progress / @Total</p>
 }
-@code {
-    protected string author { get; set; }
 
-    protected List<string> Papers = new List<string>();
+@foreach (Paper paper in Papers)
+{
+    <div><b>@paper.Title</b>: @paper.Doi</div>
+}
+
+@code {
+    protected int Progress { get; set; }
+
+    protected int Total { get; set; }
+
+    protected string Author { get; set; }
+
+    protected List<Paper> Papers = new List<Paper>();
+
+    protected Dictionary<string, Paper> PaperStorage = new Dictionary<string, Paper>();
+
+    protected Dictionary<string, List<string>> AuthorsPapersStorage = new Dictionary<string, List<string>>();
 
     protected override async Task OnInitializedAsync()
     {
+        var papers = await localStore.GetItemAsync<Dictionary<string, Paper>>("papers");
+        if (papers != null)
+        {
+            PaperStorage = papers;
+        }
+        var authorsStorage = await localStore.GetItemAsync<Dictionary<string, List<string>>>("authorsStorage");
+        if (authorsStorage != null)
+        {
+            AuthorsPapersStorage = authorsStorage;
+        }
     }
 
     public async Task Fetch()
     {
-        string authorArgument = author.Replace(" ", "+");
-        HttpResponseMessage result = await client.GetAsync($"https://cors-anywhere.herokuapp.com/https://dblp.org/search/publ/api?q=author%3A{authorArgument}%3A&format=json&h=1000");
+        var authorsPapers = await FetchAuthorsPapersAsync(Author);
 
-        string stringContent = await result.Content.ReadAsStringAsync();
-        var json = JsonDocument.Parse(stringContent);
-        var hits = json.RootElement.GetProperty("result").GetProperty("hits").GetProperty("hit").EnumerateArray();
-        JsonElement thowAwayValue;
-
-        Papers = hits
-            .GroupBy(hit => hit.GetProperty("info").GetProperty("title").GetString().ToLower(), hit => hit)
-            .Where(hitGroup => hitGroup
-                .Where(hit => hit.GetProperty("info").TryGetProperty("doi", out thowAwayValue)).Count() != 0)
-            .Select(hitGroup => hitGroup
-                .Where(hit => hit.GetProperty("info").TryGetProperty("doi", out thowAwayValue))
-                .First()
-                .GetProperty("info"))
-            .Select(info => info.GetProperty("title").GetString() + " : " + info.GetProperty("doi").GetString())
-            .ToList();
+        await FetchPapersAsync(authorsPapers);
     }
 
-    private class PublRequest
+    public async Task<List<string>> FetchAuthorsPapersAsync(string author)
     {
+        string authorArgument = author.Replace(" ", "+");
+        List<string> authorsPapers;
+        if (!AuthorsPapersStorage.TryGetValue(authorArgument, out authorsPapers))
+        {
+            HttpResponseMessage result = await client.GetAsync($"https://cors-anywhere.herokuapp.com/https://dblp.org/search/publ/api?q=author%3A{authorArgument}%3A&format=json&h=1000");
 
+            string stringContent = await result.Content.ReadAsStringAsync();
+            var json = JsonDocument.Parse(stringContent);
+            var hits = json.RootElement.GetProperty("result").GetProperty("hits").GetProperty("hit").EnumerateArray();
+            JsonElement throwAwayValue;
+
+            authorsPapers = hits
+                .GroupBy(hit => hit.GetProperty("info").GetProperty("title").GetString().ToLower(), hit => hit)
+                .Where(hitGroup => hitGroup
+                    .Where(hit => hit.GetProperty("info").TryGetProperty("doi", out throwAwayValue)).Count() != 0)
+                .Select(hitGroup => hitGroup
+                    .Where(hit => hit.GetProperty("info").TryGetProperty("doi", out throwAwayValue))
+                    .First()
+                    .GetProperty("info"))
+                .Select(info => info.GetProperty("doi").GetString())
+                .ToList();
+            AuthorsPapersStorage.Add(authorArgument, authorsPapers);
+            await localStore.SetItemAsync("authorsStorage", AuthorsPapersStorage);
+        }
+        Total = authorsPapers.Count();
+        return authorsPapers;
+    }
+
+    public async Task FetchPapersAsync(List<string> dois)
+    {
+        Progress = 0;
+        StateHasChanged();
+
+        foreach (string doi in dois)
+        {
+            Progress++;
+            StateHasChanged();
+            Paper paper;
+            if (PaperStorage.TryGetValue(doi, out paper))
+            {
+                Papers.Add(paper);
+                continue;
+            }
+            var res = await client.GetAsync($"https://cors-anywhere.herokuapp.com/https://opencitations.net/index/api/v1/metadata/{doi}");
+            var str = await res.Content.ReadAsStringAsync();
+            var root = JsonDocument.Parse(str).RootElement;
+            if (root.ValueKind != JsonValueKind.Array) continue;
+            if (root.GetArrayLength() == 0) continue;
+            var first = root.EnumerateArray().First();
+            int year;
+            paper = new Paper()
+            {
+                Doi = doi,
+                Author = first.GetProperty("author").GetString(),
+                Title = first.GetProperty("title").GetString(),
+                Year = int.TryParse(first.GetProperty("year").ToString(), out year) ? year : 0
+            };
+            PaperStorage.Add(doi, paper);
+            Papers.Add(paper);
+            await localStore.SetItemAsync("papers", PaperStorage);
+        }
     }
 }
