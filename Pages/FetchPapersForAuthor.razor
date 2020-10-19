@@ -23,7 +23,7 @@
     public async Task Fetch()
     {
         string authorArgument = author.Replace(" ", "+");
-        HttpResponseMessage result = await client.GetAsync($"https://dblp.org/search/publ/api?q=author%3A{authorArgument}%3A&format=json&h=1000");
+        HttpResponseMessage result = await client.GetAsync($"https://cors-anywhere.herokuapp.com/https://dblp.org/search/publ/api?q=author%3A{authorArgument}%3A&format=json&h=1000");
 
         string stringContent = await result.Content.ReadAsStringAsync();
         var json = JsonDocument.Parse(stringContent);
